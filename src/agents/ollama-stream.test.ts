@@ -399,6 +399,26 @@ describe("createOllamaStreamFn", () => {
     );
   });
 
+  it("sends think: false when model.reasoning is not enabled", async () => {
+    await withMockNdjsonFetch(
+      [
+        '{"model":"m","created_at":"t","message":{"role":"assistant","content":"ok"},"done":false}',
+        '{"model":"m","created_at":"t","message":{"role":"assistant","content":""},"done":true,"prompt_eval_count":1,"eval_count":1}',
+      ],
+      async (fetchMock) => {
+        const stream = await createOllamaTestStream({
+          baseUrl: "http://ollama-host:11434",
+        });
+
+        await collectStreamEvents(stream);
+
+        const [, requestInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+        const requestBody = JSON.parse(requestInit.body as string) as { think?: boolean };
+        expect(requestBody.think).toBe(false);
+      },
+    );
+  });
+
   it("merges default headers and allows request headers to override them", async () => {
     await withMockNdjsonFetch(
       [

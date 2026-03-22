@@ -42,6 +42,7 @@ interface OllamaChatRequest {
   model: string;
   messages: OllamaChatMessage[];
   stream: boolean;
+  think?: boolean;
   tools?: OllamaTool[];
   options?: Record<string, unknown>;
 }
@@ -463,6 +464,10 @@ export function createOllamaStreamFn(
           model: model.id,
           messages: ollamaMessages,
           stream: true,
+          // Disable thinking for models that don't have reasoning enabled.
+          // Without this, reasoning models (e.g. qwen3.5) spend all output
+          // tokens on internal thinking and produce empty visible content.
+          ...(model.reasoning ? {} : { think: false }),
           ...(ollamaTools.length > 0 ? { tools: ollamaTools } : {}),
           options: ollamaOptions,
         };
