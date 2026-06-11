@@ -707,6 +707,9 @@ export class DiscordVoiceManager {
       if (playerErrorHandler) {
         player.off("error", playerErrorHandler);
       }
+      if (playerIdleRecaptureHandler) {
+        player.off(voiceSdk.AudioPlayerStatus.Idle, playerIdleRecaptureHandler);
+      }
       entry.pendingRealtime?.close();
       entry.pendingRealtime = undefined;
       entry.realtime?.close();
@@ -833,6 +836,27 @@ export class DiscordVoiceManager {
     const playerErrorHandler: ((err: Error) => void) | undefined = (err: Error) => {
       logger.warn(`discord voice: playback error: ${formatErrorMessage(err)}`);
     };
+    // Non-realtime capture ignores speaking-start while the player is Playing,
+    // and Discord won't re-emit one while the client keeps transmitting (VAD
+    // hangover bridges sentence pauses) — so speech that begins over the bot's
+    // playback tail would otherwise be dropped wholesale. When playback ends,
+    // re-fire capture for anyone still transmitting; handleSpeakingStart's
+    // already-active guard makes this idempotent.
+    const playerIdleRecaptureHandler: (() => void) | undefined = () => {
+      const speakingUsers = connection.receiver.speaking.users;
+      if (!speakingUsers || speakingUsers.size === 0) {
+        return;
+      }
+      for (const stillSpeakingUserId of [...speakingUsers.keys()]) {
+        if (this.botUserId && stillSpeakingUserId === this.botUserId) {
+          continue;
+        }
+        logger.info(
+          `discord voice: post-playback capture recovery: guild ${guildId} channel ${channelId} user ${stillSpeakingUserId}`,
+        );
+        speakingHandler(stillSpeakingUserId);
+      }
+    };
 
     this.enableDaveReceivePassthrough(
       entry,
@@ -844,6 +868,7 @@ export class DiscordVoiceManager {
     connection.on(voiceSdk.VoiceConnectionStatus.Disconnected, disconnectedHandler);
     connection.on(voiceSdk.VoiceConnectionStatus.Destroyed, destroyedHandler);
     player.on("error", playerErrorHandler);
+    player.on(voiceSdk.AudioPlayerStatus.Idle, playerIdleRecaptureHandler);
 
     this.sessions.set(guildId, entry);
     this.fatalAutoJoinFailures.delete(formatAutoJoinFailureKey({ guildId, channelId }));
