@@ -1573,10 +1573,21 @@ export class DiscordVoiceManager {
     const realtime =
       entry.realtime && isDiscordRealtimeVoiceMode(voiceMode) ? entry.realtime : undefined;
     if (entry.player.state.status === voiceSdk.AudioPlayerStatus.Playing && !realtime) {
-      logVoiceVerbose(
-        `capture ignored during playback: guild ${entry.guildId} channel ${entry.channelId} user ${userId}`,
-      );
-      return;
+      if (process.env.OPENCLAW_DISCORD_VOICE_BARGE_IN === "1") {
+        // Barge-in: stop playback and fall through so the interrupting
+        // utterance is captured like any other. The generation bump flushes
+        // queued/in-flight replies whose segment started before this moment.
+        entry.bargeInGeneration = (entry.bargeInGeneration ?? 0) + 1;
+        logger.info(
+          `discord voice: barge-in (stt-tts) gen=${entry.bargeInGeneration} guild=${entry.guildId} channel=${entry.channelId} user=${userId}`,
+        );
+        entry.player.stop(true);
+      } else {
+        logVoiceVerbose(
+          `capture ignored during playback: guild ${entry.guildId} channel ${entry.channelId} user ${userId}`,
+        );
+        return;
+      }
     }
     const realtimeIngress = realtime
       ? await this.resolveDiscordVoiceIngressContext(entry, userId)
