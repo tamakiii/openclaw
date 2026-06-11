@@ -44,6 +44,9 @@ export async function processDiscordVoiceSegment(params: {
   enqueuePlayback: (entry: VoiceSessionEntry, task: () => Promise<void>) => void;
 }) {
   const { entry, wavPath, userId, durationSeconds } = params;
+  // Run-scoped barge-in generation: captured before the agent turn so an
+  // interruption also flushes replies still being generated when it happened.
+  const bargeGen = entry.bargeInGeneration ?? 0;
   logVoiceVerbose(
     `segment processing (${durationSeconds.toFixed(2)}s): guild ${entry.guildId} channel ${entry.channelId}`,
   );
@@ -173,6 +176,13 @@ export async function processDiscordVoiceSegment(params: {
     const releaseAudioStream =
       voiceReplyAudio.mode === "stream" ? voiceReplyAudio.release : undefined;
     try {
+      // Inside the try so the finally below still releases stream resources.
+      if ((entry.bargeInGeneration ?? 0) !== bargeGen) {
+        logger.info(
+          `discord voice: playback skipped (barge-in gen ${bargeGen} -> ${entry.bargeInGeneration ?? 0}): guild ${entry.guildId} channel ${entry.channelId}`,
+        );
+        return;
+      }
       if (voiceReplyAudio.mode === "stream") {
         logVoiceVerbose(`playback start: guild ${entry.guildId} channel ${entry.channelId} stream`);
         const nodeStream = Readable.fromWeb(

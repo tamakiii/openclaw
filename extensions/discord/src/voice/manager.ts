@@ -267,6 +267,19 @@ function resolveDiscordVoiceAgentRoute(params: {
       id: parsed.id,
     },
   });
+  // Carried delta (airedale fork): a voice channel whose own route binding
+  // resolves to a DIFFERENT agent than the global agentSession target keeps
+  // its own per-channel session. Without this, mode "target" routes every VC
+  // through the target channel's agent, making per-VC agent bindings
+  // unreachable. Channels routing to the same agent keep target semantics.
+  if (route.agentId !== voiceRoute.agentId) {
+    return {
+      route: voiceRoute,
+      voiceRoute,
+      agentSessionMode: "voice" as const,
+      agentSessionTarget: undefined,
+    };
+  }
   return {
     route,
     voiceRoute,
@@ -707,6 +720,9 @@ export class DiscordVoiceManager {
       if (playerErrorHandler) {
         player.off("error", playerErrorHandler);
       }
+      if (playerIdleRecaptureHandler) {
+        player.off(voiceSdk.AudioPlayerStatus.Idle, playerIdleRecaptureHandler);
+      }
       entry.pendingRealtime?.close();
       entry.pendingRealtime = undefined;
       entry.realtime?.close();
@@ -833,6 +849,27 @@ export class DiscordVoiceManager {
     const playerErrorHandler: ((err: Error) => void) | undefined = (err: Error) => {
       logger.warn(`discord voice: playback error: ${formatErrorMessage(err)}`);
     };
+    // Non-realtime capture ignores speaking-start while the player is Playing,
+    // and Discord won't re-emit one while the client keeps transmitting (VAD
+    // hangover bridges sentence pauses) — so speech that begins over the bot's
+    // playback tail would otherwise be dropped wholesale. When playback ends,
+    // re-fire capture for anyone still transmitting; handleSpeakingStart's
+    // already-active guard makes this idempotent.
+    const playerIdleRecaptureHandler: (() => void) | undefined = () => {
+      const speakingUsers = connection.receiver.speaking.users;
+      if (!speakingUsers || speakingUsers.size === 0) {
+        return;
+      }
+      for (const stillSpeakingUserId of [...speakingUsers.keys()]) {
+        if (this.botUserId && stillSpeakingUserId === this.botUserId) {
+          continue;
+        }
+        logger.info(
+          `discord voice: post-playback capture recovery: guild ${guildId} channel ${channelId} user ${stillSpeakingUserId}`,
+        );
+        speakingHandler(stillSpeakingUserId);
+      }
+    };
 
     this.enableDaveReceivePassthrough(
       entry,
@@ -844,6 +881,7 @@ export class DiscordVoiceManager {
     connection.on(voiceSdk.VoiceConnectionStatus.Disconnected, disconnectedHandler);
     connection.on(voiceSdk.VoiceConnectionStatus.Destroyed, destroyedHandler);
     player.on("error", playerErrorHandler);
+    player.on(voiceSdk.AudioPlayerStatus.Idle, playerIdleRecaptureHandler);
 
     this.sessions.set(guildId, entry);
     this.fatalAutoJoinFailures.delete(formatAutoJoinFailureKey({ guildId, channelId }));
@@ -1535,6 +1573,21 @@ export class DiscordVoiceManager {
     const realtime =
       entry.realtime && isDiscordRealtimeVoiceMode(voiceMode) ? entry.realtime : undefined;
     if (entry.player.state.status === voiceSdk.AudioPlayerStatus.Playing && !realtime) {
+      if (process.env.OPENCLAW_DISCORD_VOICE_BARGE_IN === "1") {
+        // Barge-in: stop playback and return. Capture of the interrupting
+        // utterance is delegated to the player-Idle recapture handler, which
+        // re-fires for users still in receiver.speaking.users on the Idle
+        // transition stop(true) forces — a single stream consumer, no overlap
+        // with this invocation (load-bearing coupling: removing that handler
+        // would silently break barge-in capture). The generation bump flushes
+        // queued/in-flight replies whose segment started before this moment.
+        entry.bargeInGeneration = (entry.bargeInGeneration ?? 0) + 1;
+        logger.info(
+          `discord voice: barge-in (stt-tts) gen=${entry.bargeInGeneration} guild=${entry.guildId} channel=${entry.channelId} user=${userId}`,
+        );
+        entry.player.stop(true);
+        return;
+      }
       logVoiceVerbose(
         `capture ignored during playback: guild ${entry.guildId} channel ${entry.channelId} user ${userId}`,
       );
