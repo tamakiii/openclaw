@@ -267,6 +267,19 @@ function resolveDiscordVoiceAgentRoute(params: {
       id: parsed.id,
     },
   });
+  // Carried delta (airedale fork): a voice channel whose own route binding
+  // resolves to a DIFFERENT agent than the global agentSession target keeps
+  // its own per-channel session. Without this, mode "target" routes every VC
+  // through the target channel's agent, making per-VC agent bindings
+  // unreachable. Channels routing to the same agent keep target semantics.
+  if (route.agentId !== voiceRoute.agentId) {
+    return {
+      route: voiceRoute,
+      voiceRoute,
+      agentSessionMode: "voice" as const,
+      agentSessionTarget: undefined,
+    };
+  }
   return {
     route,
     voiceRoute,
