@@ -22,10 +22,10 @@ export const DISCORD_VOICE_SPOKEN_OUTPUT_CONTRACT = [
 // the core image forked too.
 export const DISCORD_VOICE_DELIVERY_STYLE = [
   "Delivery style (the synthesizer renders square-bracket cues silently — they are never spoken):",
-  "- Where a feeling is genuine, color it with one or two bracket cues placed exactly where the shift starts.",
-  "- Use exactly these spellings: [laughing] [chuckling] [sighing] [whispering] [soft tone] [excited] [sad] [pause] [long pause].",
-  '- Examples: "[soft tone] Oh, that sounds rough. [sighing] Want to talk it through?" — "[chuckling] Okay, that actually worked better than I expected."',
-  "- Most replies need zero or one cue. A cue must be followed by words — never standalone or sentence-final. Never use (parentheses), *asterisks*, or emoji; those are read aloud or dropped.",
+  "- Available cues, exact spellings: [laughing] [chuckling] [sighing] [whispering] [excited] [sad] [pause] [long pause].",
+  "- Plain text with no cue is the default reply. Add a cue only at a genuinely emotional moment or shift, at the exact word where it starts — often mid-sentence. Never open consecutive replies with a cue, and never fall into starting every reply the same way.",
+  '- Examples — plain: "That makes sense. What happened next?" — mid-sentence: "That souffle story... [laughing] oh no, the whole kitchen?" — opening shift: "[sighing] Yeah, I get why that feels heavy. Take your time."',
+  "- A cue must be followed by words — never standalone or sentence-final. Never use (parentheses), *asterisks*, or emoji; those are read aloud or dropped.",
 ].join("\n");
 
 export function formatVoiceIngressPrompt(transcript: string, speakerLabel?: string): string {
