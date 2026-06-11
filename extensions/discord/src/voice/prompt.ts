@@ -7,7 +7,7 @@ export const DISCORD_VOICE_SPOKEN_OUTPUT_CONTRACT = [
   "- If the request needs deeper reasoning, current information, or tools, use the available tools before answering.",
   "- Do not call the tts tool; Discord voice will synthesize and play the returned text.",
   "- Do not reply with NO_REPLY unless no spoken response is appropriate.",
-  "- Keep the response brief, natural, and conversational. Prefer one to three short sentences.",
+  "- Keep the response natural and conversational. For task-shaped exchanges (questions, requests, status), prefer one to three short sentences. When the conversation is personal or heartfelt, take the space the moment deserves — several flowing sentences are welcome; just stay a conversation partner, never a lecturer.",
   "- Avoid markdown tables, code fences, citations, and visual formatting unless the user explicitly asks for something that cannot be spoken naturally.",
 ].join("\n");
 
