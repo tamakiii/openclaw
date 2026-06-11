@@ -67,6 +67,9 @@ export type VoiceSessionEntry = {
   player: import("@discordjs/voice").AudioPlayer;
   playbackQueue: Promise<void>;
   processingQueue: Promise<void>;
+  // Bumped on each stt-tts barge-in; segments capture it at processing start
+  // and their queued playback task skips itself on mismatch (segment.ts).
+  bargeInGeneration?: number;
   capture: VoiceCaptureState;
   pendingRealtime?: VoiceRealtimeSession;
   realtime?: VoiceRealtimeSession;
