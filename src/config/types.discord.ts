@@ -225,6 +225,8 @@ export type DiscordVoiceConfig = {
   reconnectGraceMs?: number;
   /** Silence grace after Discord reports a speaker ended before finalizing STT capture (default: 2000). */
   captureSilenceGraceMs?: number;
+  /** Hard cap on a single STT capture segment in milliseconds (default: 20000). Force-finalizes the segment for transcription even while the speaker keeps talking, preventing one unbounded WAV that whisper.cpp fails to encode. */
+  maxUtteranceMs?: number;
   /** Optional TTS overrides for Discord voice output. */
   tts?: TtsConfig;
 };

@@ -314,6 +314,10 @@ export const discordChannelConfigUiHints = {
     label: "Discord Voice Capture Silence Grace (ms)",
     help: "Silence window after Discord reports a speaker ended before OpenClaw finalizes the audio segment for transcription. Default: 2000.",
   },
+  "voice.maxUtteranceMs": {
+    label: "Discord Voice Max Utterance (ms)",
+    help: "Hard cap on a single STT capture segment before OpenClaw force-finalizes it for transcription even while the speaker keeps talking, avoiding one unbounded clip that whisper.cpp fails to encode. Default: 20000.",
+  },
   "voice.tts": {
     label: "Discord Voice Text-to-Speech",
     help: "Optional TTS overrides for Discord voice playback (merged with messages.tts).",

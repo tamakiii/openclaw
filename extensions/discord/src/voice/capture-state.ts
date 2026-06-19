@@ -5,7 +5,7 @@ type VoiceCaptureEntry = {
   stream: Readable;
 };
 
-type VoiceCaptureFinalizeTimer = {
+type VoiceCaptureTimer = {
   generation: number;
   timer: ReturnType<typeof setTimeout>;
 };
@@ -13,7 +13,11 @@ type VoiceCaptureFinalizeTimer = {
 export type VoiceCaptureState = {
   activeSpeakers: Set<string>;
   activeCaptureStreams: Map<string, VoiceCaptureEntry>;
-  captureFinalizeTimers: Map<string, VoiceCaptureFinalizeTimer>;
+  captureFinalizeTimers: Map<string, VoiceCaptureTimer>;
+  // Per-speaker hard cap on a single capture segment, armed alongside the
+  // finalize timer; cleared everywhere the finalize timer is cleared so the two
+  // stay symmetric and never outlive their generation.
+  captureMaxDurationTimers: Map<string, VoiceCaptureTimer>;
   captureGenerations: Map<string, number>;
 };
 
@@ -22,6 +26,7 @@ export function createVoiceCaptureState(): VoiceCaptureState {
     activeSpeakers: new Set(),
     activeCaptureStreams: new Map(),
     captureFinalizeTimers: new Map(),
+    captureMaxDurationTimers: new Map(),
     captureGenerations: new Map(),
   };
 }
@@ -31,6 +36,10 @@ export function stopVoiceCaptureState(state: VoiceCaptureState): void {
     clearTimeout(timer);
   }
   state.captureFinalizeTimers.clear();
+  for (const { timer } of state.captureMaxDurationTimers.values()) {
+    clearTimeout(timer);
+  }
+  state.captureMaxDurationTimers.clear();
   for (const { stream } of state.activeCaptureStreams.values()) {
     stream.destroy();
   }
@@ -64,6 +73,20 @@ export function clearVoiceCaptureFinalizeTimer(
   return true;
 }
 
+function clearVoiceCaptureMaxDurationTimer(
+  state: VoiceCaptureState,
+  userId: string,
+  generation?: number,
+): boolean {
+  const scheduled = state.captureMaxDurationTimers.get(userId);
+  if (!scheduled || (generation !== undefined && scheduled.generation !== generation)) {
+    return false;
+  }
+  clearTimeout(scheduled.timer);
+  state.captureMaxDurationTimers.delete(userId);
+  return true;
+}
+
 export function beginVoiceCapture(
   state: VoiceCaptureState,
   userId: string,
@@ -74,6 +97,7 @@ export function beginVoiceCapture(
   state.activeSpeakers.add(userId);
   state.activeCaptureStreams.set(userId, { generation, stream });
   clearVoiceCaptureFinalizeTimer(state, userId, generation);
+  clearVoiceCaptureMaxDurationTimer(state, userId, generation);
   return generation;
 }
 
@@ -83,6 +107,7 @@ export function finishVoiceCapture(
   generation: number,
 ): boolean {
   clearVoiceCaptureFinalizeTimer(state, userId, generation);
+  clearVoiceCaptureMaxDurationTimer(state, userId, generation);
   const activeCapture = state.activeCaptureStreams.get(userId);
   if (activeCapture?.generation !== generation) {
     return false;
@@ -116,5 +141,34 @@ export function scheduleVoiceCaptureFinalize(params: {
     activeCapture.stream.destroy();
   }, delayMs);
   state.captureFinalizeTimers.set(userId, { generation: capture.generation, timer });
+  return true;
+}
+
+export function scheduleVoiceCaptureMaxDuration(params: {
+  state: VoiceCaptureState;
+  userId: string;
+  delayMs: number;
+  onCap?: (capture: VoiceCaptureEntry) => void;
+}): boolean {
+  const { state, userId, delayMs, onCap } = params;
+  const capture = state.activeCaptureStreams.get(userId);
+  if (!capture) {
+    return false;
+  }
+  clearVoiceCaptureMaxDurationTimer(state, userId, capture.generation);
+  const timer = setTimeout(() => {
+    const activeCapture = state.activeCaptureStreams.get(userId);
+    if (!activeCapture || activeCapture.generation !== capture.generation) {
+      return;
+    }
+    state.captureMaxDurationTimers.delete(userId);
+    // Only destroy the stream: this ends decodeOpusStream's `for await` loop so
+    // the ≤cap PCM already captured is written + transcribed by the normal path.
+    // Active-speaker/capture-stream bookkeeping is cleared by finishVoiceCapture
+    // in the capture handler's finally, keeping ownership in one place.
+    onCap?.(activeCapture);
+    activeCapture.stream.destroy();
+  }, delayMs);
+  state.captureMaxDurationTimers.set(userId, { generation: capture.generation, timer });
   return true;
 }

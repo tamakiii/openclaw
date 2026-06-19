@@ -25,6 +25,7 @@ import {
   getActiveVoiceCapture,
   isVoiceCaptureActive,
   scheduleVoiceCaptureFinalize,
+  scheduleVoiceCaptureMaxDuration,
   stopVoiceCaptureState,
 } from "./capture-state.js";
 import { resolveDiscordVoiceEnabled } from "./config.js";
@@ -56,6 +57,7 @@ import {
   CAPTURE_FINALIZE_GRACE_MS,
   isVoiceChannel,
   logVoiceVerbose,
+  MAX_UTTERANCE_MS,
   resolveVoiceTimeoutMs,
   MIN_SEGMENT_SECONDS,
   VOICE_CONNECT_READY_TIMEOUT_MS,
@@ -1628,6 +1630,30 @@ export class DiscordVoiceManager {
       },
     });
     const generation = beginVoiceCapture(entry.capture, userId, stream);
+    if (!realtime) {
+      // stt-tts only: Manual end-behavior + silence-only finalize lets one WAV
+      // grow unbounded; whisper.cpp then "failed to encode" the oversized clip
+      // and the assistant went silent (tamakiii/meta#1329). Destroying the
+      // stream here ends decodeOpusStream's loop so the ≤cap PCM transcribes
+      // normally. Realtime streams chunk-by-chunk, so it has no such cap.
+      const maxUtteranceMs = resolveVoiceTimeoutMs(
+        this.params.discordConfig.voice?.maxUtteranceMs,
+        MAX_UTTERANCE_MS,
+      );
+      scheduleVoiceCaptureMaxDuration({
+        state: entry.capture,
+        userId,
+        delayMs: maxUtteranceMs,
+        onCap: () => {
+          // info-level (matches the barge-in log above): a capped utterance is a
+          // notable, infrequent event — it means a turn was force-finalized, so
+          // surface it without requiring verbose voice logging.
+          logger.info(
+            `discord voice: capture max-duration cap reached (${maxUtteranceMs}ms) guild=${entry.guildId} channel=${entry.channelId} user=${userId}`,
+          );
+        },
+      });
+    }
     let streamAborted = false;
     let receiveFailureHandled = false;
     let receiveStreamEndHandled = false;

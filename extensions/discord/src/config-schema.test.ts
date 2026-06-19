@@ -265,12 +265,14 @@ describe("discord config schema", () => {
         connectTimeoutMs: 45_000,
         reconnectGraceMs: 20_000,
         captureSilenceGraceMs: 3_500,
+        maxUtteranceMs: 30_000,
       },
     });
 
     expect(cfg.voice?.connectTimeoutMs).toBe(45_000);
     expect(cfg.voice?.reconnectGraceMs).toBe(20_000);
     expect(cfg.voice?.captureSilenceGraceMs).toBe(3_500);
+    expect(cfg.voice?.maxUtteranceMs).toBe(30_000);
   });
 
   it("accepts Discord voice allowed channels", () => {
@@ -300,6 +302,8 @@ describe("discord config schema", () => {
       { reconnectGraceMs: 1.5 },
       { captureSilenceGraceMs: 0 },
       { captureSilenceGraceMs: 30_001 },
+      { maxUtteranceMs: 0 },
+      { maxUtteranceMs: 120_001 },
     ]) {
       expectInvalidDiscordConfig({ voice });
     }
