@@ -1645,8 +1645,11 @@ export class DiscordVoiceManager {
         userId,
         delayMs: maxUtteranceMs,
         onCap: () => {
-          logVoiceVerbose(
-            `capture max-duration cap: guild ${entry.guildId} channel ${entry.channelId} user ${userId} cap=${maxUtteranceMs}ms`,
+          // info-level (matches the barge-in log above): a capped utterance is a
+          // notable, infrequent event — it means a turn was force-finalized, so
+          // surface it without requiring verbose voice logging.
+          logger.info(
+            `discord voice: capture max-duration cap reached (${maxUtteranceMs}ms) guild=${entry.guildId} channel=${entry.channelId} user=${userId}`,
           );
         },
       });
